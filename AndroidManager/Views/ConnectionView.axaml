@@ -19,49 +19,12 @@
     <!-- Две основные карточки -->
     <Grid ColumnDefinitions="*,18,*">
 
-      <!-- Левая карточка: Выбор устройства -->
+      <!-- Левая карточка: Подключение по IP / Wi-Fi -->
       <Border Grid.Column="0" Classes="card--active">
         <StackPanel Spacing="16">
           <StackPanel Spacing="8">
             <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-              <PathIcon Data="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"
-                        Width="18" Height="18" Foreground="{DynamicResource HeadText}" />
-              <TextBlock Text="ADB УСТРОЙСТВО" FontSize="15" FontWeight="Bold"
-                         Foreground="{DynamicResource Text}" VerticalAlignment="Center" />
-            </StackPanel>
-            <TextBlock Text="ПРОВОДНОЕ И СПИСОК УСТРОЙСТВ" FontSize="10" FontWeight="Bold"
-                       Foreground="{DynamicResource Muted}" LetterSpacing="0.5" />
-            <Border Classes="badge" HorizontalAlignment="Left">
-              <StackPanel Orientation="Horizontal" Spacing="6">
-                <Ellipse Width="6" Height="6" Fill="{DynamicResource HeadText}" VerticalAlignment="Center" />
-                <TextBlock Text="ГОТОВО К РАБОТЕ" FontSize="10" FontWeight="Bold"
-                           Foreground="{DynamicResource HeadText}" />
-              </StackPanel>
-            </Border>
-          </StackPanel>
-
-          <StackPanel Spacing="6">
-            <TextBlock Text="ВЫБОР УСТРОЙСТВА" FontSize="10" FontWeight="Bold"
-                       Foreground="{DynamicResource Muted}" LetterSpacing="0.5" />
-            <ComboBox x:Name="DeviceBox" HorizontalAlignment="Stretch" />
-          </StackPanel>
-
-          <Button x:Name="ConnectBtn" Content="ПОДКЛЮЧИТЬ" Classes="btn--primary" HorizontalAlignment="Stretch" />
-
-          <Grid ColumnDefinitions="*,10,*">
-            <Button Grid.Column="0" x:Name="RefreshBtn" Content="ОБНОВИТЬ" Classes="btn--ghost" HorizontalAlignment="Stretch" />
-            <Button Grid.Column="2" x:Name="DisconnectBtn" Content="ОТКЛЮЧИТЬ" Classes="btn--ghost" HorizontalAlignment="Stretch" />
-          </Grid>
-        </StackPanel>
-      </Border>
-
-      <!-- Правая карточка: Подключение по IP / Wi-Fi -->
-      <Border Grid.Column="2" Classes="card--active">
-        <StackPanel Spacing="16">
-          <StackPanel Spacing="8">
-            <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-              <PathIcon Data="M7 18a4 4 0 010-8 5 5 0 019.6-1A4.5 4.5 0 0117 18z"
-                        Width="18" Height="18" Foreground="{DynamicResource Warn}" />
+              <TextBlock Text="📶" FontSize="18" Foreground="#F5923E" VerticalAlignment="Center" />
               <TextBlock Text="WI-FI / IP:ПОРТ" FontSize="15" FontWeight="Bold"
                          Foreground="{DynamicResource Text}" VerticalAlignment="Center" />
             </StackPanel>
@@ -71,7 +34,7 @@
               <StackPanel Orientation="Horizontal" Spacing="6">
                 <Ellipse Width="6" Height="6" Fill="{DynamicResource HeadText}" VerticalAlignment="Center" />
                 <TextBlock Text="СЕТЕВОЙ РЕЖИМ" FontSize="10" FontWeight="Bold"
-                           Foreground="{DynamicResource HeadText}" />
+                           Foreground="#4DD4FF" />
               </StackPanel>
             </Border>
           </StackPanel>
@@ -89,7 +52,7 @@
             </StackPanel>
           </Grid>
 
-          <Button x:Name="PairBtn" Content="СОПРЯЧЬ..." Classes="btn--primary" HorizontalAlignment="Stretch" />
+          <Button x:Name="PairBtn" Content="СОПРЯЖЕНИЕ..." Classes="btn--primary" HorizontalAlignment="Stretch" />
 
           <Border Background="{DynamicResource Field}" BorderBrush="{DynamicResource BorderDim}"
                   BorderThickness="1" CornerRadius="10" Padding="12">
@@ -97,9 +60,41 @@
               <TextBlock x:Name="InfoTitle" Text="Устройство не выбрано" FontSize="12" FontWeight="Bold"
                          Foreground="{DynamicResource Text}" />
               <TextBlock x:Name="InfoText" FontSize="11" Foreground="{DynamicResource Muted}" TextWrapping="Wrap"
-                         Text="Выберите устройство в списке слева или подключитесь по IP:порт." />
+                         Text="Введите IP и порт, или выберите устройство в списке справа." />
             </StackPanel>
           </Border>
+        </StackPanel>
+      </Border>
+
+      <!-- Правая карточка: Выбор устройства -->
+      <Border Grid.Column="2" Classes="card--active">
+        <StackPanel Spacing="16">
+          <StackPanel Spacing="8">
+            <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+              <TextBlock Text="📱" FontSize="18" Foreground="#4DD4FF" VerticalAlignment="Center" />
+              <TextBlock Text="ADB УСТРОЙСТВО" FontSize="15" FontWeight="Bold"
+                         Foreground="{DynamicResource Text}" VerticalAlignment="Center" />
+            </StackPanel>
+            <TextBlock Text="ПРОВОДНОЕ И СПИСОК УСТРОЙСТВ" FontSize="10" FontWeight="Bold"
+                       Foreground="{DynamicResource Muted}" LetterSpacing="0.5" />
+            <Border Classes="badge" HorizontalAlignment="Left">
+              <StackPanel Orientation="Horizontal" Spacing="6">
+                <Ellipse Width="6" Height="6" Fill="{DynamicResource HeadText}" VerticalAlignment="Center" />
+                <TextBlock Text="ГОТОВО К РАБОТЕ" FontSize="10" FontWeight="Bold"
+                           Foreground="#4DD4FF" />
+              </StackPanel>
+            </Border>
+          </StackPanel>
+
+          <StackPanel Spacing="6">
+            <TextBlock Text="ВЫБОР УСТРОЙСТВА" FontSize="10" FontWeight="Bold"
+                       Foreground="{DynamicResource Muted}" LetterSpacing="0.5" />
+            <ComboBox x:Name="DeviceBox" HorizontalAlignment="Stretch" IsEditable="True" />
+          </StackPanel>
+
+          <Button x:Name="ConnectBtn" Content="ПОДКЛЮЧИТЬ" Classes="btn--primary" HorizontalAlignment="Stretch" />
+
+          <Button x:Name="RefreshBtn" Content="ОБНОВИТЬ" Classes="btn--ghost" HorizontalAlignment="Stretch" />
         </StackPanel>
       </Border>
 
