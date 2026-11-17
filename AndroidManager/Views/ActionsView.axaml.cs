@@ -14,6 +14,7 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
 namespace AndroidManager.Views;
@@ -54,7 +55,24 @@ public partial class ActionsView : UserControl
         BtnRebootBootloader.Click += (_, _) => Reboot("bootloader");
         BtnKey.Click += (_, _) => SendKey();
 
-        Loaded += (_, _) => { LoadVysorPath(); ReloadPrograms(); };
+        BtnScreenRefresh.Click += (_, _) => _ = RefreshScreenInfoAsync();
+        BtnScreenApply.Click += (_, _) => _ = ApplyScreenAsync();
+        BtnScreenResetSize.Click += (_, _) => _ = ResetScreenAsync(false);
+        BtnScreenResetDpi.Click += (_, _) => _ = ResetScreenAsync(true);
+        Preset720.Click += (_, _) => ResBox.Text = "1280x720";
+        Preset1080.Click += (_, _) => ResBox.Text = "1920x1080";
+        Preset2160.Click += (_, _) => ResBox.Text = "3840x2160";
+
+        Loaded += (_, _) => { LoadVysorPath(); ReloadPrograms(); RefreshCustomBar(); _ = RefreshScreenInfoAsync(); };
+    }
+
+    /// <summary>Перерисовывает кастомные кнопки панели «Действия».</summary>
+    public void RefreshCustomBar()
+    {
+        if (Ctx is null)
+            return;
+
+        CustomBars.Render(Ctx, CustomBars.PanelTools, CustomBar, TopLevel.GetTopLevel(this), RefreshCustomBar);
     }
 
     private class KeyItem
@@ -125,8 +143,20 @@ public partial class ActionsView : UserControl
             return;
         }
 
-        var scrcpy = Paths.FindTool(ScrcpyExeName);
-        var args = new List<string> { scrcpy, "-s", serial, "--video-codec", ScCodec.SelectedItem as string ?? "h264" };
+        var scrcpyPath = FindScrcpyPath();
+        if (string.IsNullOrEmpty(scrcpyPath))
+        {
+            var local = System.IO.Path.Combine(Paths.Base, "tools", ScrcpyExeName, ScrcpyExeName + ".exe");
+            Ctx.Log($"scrcpy не найден. Положите scrcpy.exe в: {local} или добавьте в PATH. Текущая папка программы: {Paths.Base}");
+            return;
+        }
+
+        // Ищем adb: сначала рядом с программой, потом в PATH. Без этого scrcpy не найдёт adb.
+        var adbPath = FindAdbPath();
+        Ctx.Log($"scrcpy: {scrcpyPath}");
+        Ctx.Log($"adb: {adbPath}");
+
+        var args = new List<string> { "-s", serial, "--video-codec", ScCodec.SelectedItem as string ?? "h264" };
 
         if (!string.IsNullOrWhiteSpace(ScMax.Text) && int.TryParse(ScMax.Text, out var ms) && ms > 0)
             args.AddRange(["--max-size", ScMax.Text]);
@@ -138,30 +168,107 @@ public partial class ActionsView : UserControl
         if (ScAwake.IsChecked == true) args.Add("--stay-awake");
         if (ScOff.IsChecked == true) args.Add("--turn-screen-off");
 
+        // scrcpy-server — JAR-файл, который scrcpy отправляет на устройство.
+        // Без него scrcpy падает: "scrcpy-server does not exist or is not a regular file".
+        // Если его нет рядом со scrcpy.exe — пробуем скопировать из Android-manager.
+        var serverPath = Path.Combine(Path.GetDirectoryName(scrcpyPath) ?? "", "scrcpy-server");
+        if (!File.Exists(serverPath))
+        {
+            var candidates = new[]
+            {
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Android-manager", "tools", "scrcpy", "scrcpy-server"),
+                Path.Combine(Paths.Base, "..", "..", "..", "..", "..", "Android-manager", "tools", "scrcpy", "scrcpy-server"),
+            };
+            foreach (var c in candidates)
+            {
+                if (File.Exists(c))
+                {
+                    try { File.Copy(c, serverPath, true); Ctx.Log($"scrcpy-server скопирован из {c}"); }
+                    catch (Exception ex) { Ctx.Log($"Не удалось скопировать scrcpy-server: {ex.Message}"); }
+                    break;
+                }
+            }
+        }
+
+        var scrcpyDir = Path.GetDirectoryName(scrcpyPath) ?? "";
+
         try
         {
+            // Запускаем как GUI-процесс (как в Python-версии): без перехвата вывода.
+            // scrcpy — оконное приложение, оно не завершается до закрытия окна.
             var psi = new ProcessStartInfo
             {
-                FileName = args[0],
+                FileName = scrcpyPath,
                 UseShellExecute = false,
                 CreateNoWindow = true,
             };
-            foreach (var a in args.Skip(1)) psi.ArgumentList.Add(a);
+            foreach (var a in args) psi.ArgumentList.Add(a);
             // scrcpy ищет adb через переменную окружения ADB — передаём путь, как в Python-версии.
-            psi.Environment["ADB"] = Ctx.AdbPath;
+            psi.Environment["ADB"] = adbPath;
+            psi.Environment["PATH"] = scrcpyDir + Path.PathSeparator + (psi.Environment["PATH"] ?? "");
+
             var proc = Process.Start(psi);
             if (proc is null)
                 throw new InvalidOperationException("scrcpy не запустился");
-            Ctx.Log("scrcpy запущен");
-        }
-        catch (Win32Exception)
-        {
-            Ctx.Log($"scrcpy не найден по пути: {args[0]}. Установите scrcpy рядом с программой (tools/scrcpy/scrcpy.exe) или в PATH");
+
+            // Отслеживаем выход: если scrcpy сразу упал — увидим код и сообщение.
+            proc.EnableRaisingEvents = true;
+            proc.Exited += (_, _) =>
+            {
+                var code = proc.ExitCode;
+                Ctx.Log($"scrcpy завершился (код {code})");
+            };
+
+            Ctx.Log($"scrcpy запущен (PID {proc.Id})");
         }
         catch (Exception ex)
         {
             Ctx.Log($"Не удалось запустить scrcpy: {ex.Message}");
         }
+    }
+
+    private string FindAdbPath()
+    {
+        var local = System.IO.Path.Combine(Paths.Base, "tools", "adb", "adb.exe");
+        if (File.Exists(local))
+            return local;
+
+        // Ищем в PATH
+        var pathEnv = Environment.GetEnvironmentVariable("PATH");
+        if (pathEnv != null)
+        {
+            foreach (var dir in pathEnv.Split(Path.PathSeparator))
+            {
+                if (string.IsNullOrEmpty(dir)) continue;
+                var candidate = System.IO.Path.Combine(dir, "adb.exe");
+                if (File.Exists(candidate))
+                    return candidate;
+            }
+        }
+
+        return "adb";
+    }
+
+    private string? FindScrcpyPath()
+    {
+        var local = System.IO.Path.Combine(Paths.Base, "tools", ScrcpyExeName, ScrcpyExeName + ".exe");
+        if (File.Exists(local))
+            return local;
+
+        // Ищем в PATH, как Python shutil.which
+        var pathEnv = Environment.GetEnvironmentVariable("PATH");
+        if (pathEnv != null)
+        {
+            foreach (var dir in pathEnv.Split(Path.PathSeparator))
+            {
+                if (string.IsNullOrEmpty(dir)) continue;
+                var candidate = System.IO.Path.Combine(dir, ScrcpyExeName + ".exe");
+                if (File.Exists(candidate))
+                    return candidate;
+            }
+        }
+
+        return null;
     }
 
     private async void TakeScreenshot()
@@ -246,6 +353,147 @@ public partial class ActionsView : UserControl
                     Ctx.Log($"Ошибка клавиши: {err.Trim()}");
             });
         });
+    }
+
+    /// <summary>Смена устройства: сбрасываем показания экрана и перечитываем.</summary>
+    public void OnDeviceChanged()
+    {
+        ScreenInfo.Text = "—";
+        ResBox.Text = "";
+        DpiBox.Text = "";
+        _ = RefreshScreenInfoAsync();
+    }
+
+    /// <summary>Читает физическое и текущее (override) разрешение и плотность через wm.</summary>
+    private async Task RefreshScreenInfoAsync()
+    {
+        var serial = Ctx?.Serial;
+        if (string.IsNullOrEmpty(serial))
+        {
+            ScreenInfo.Text = "Устройство не подключено";
+            return;
+        }
+
+        try
+        {
+            var (rcS, sizeOut, _) = await Task.Run(() => new AdbClient(Ctx.AdbPath, serial, 15).Shell("wm size", 15));
+            var (rcD, densOut, _) = await Task.Run(() => new AdbClient(Ctx.AdbPath, serial, 15).Shell("wm density", 15));
+
+            if (rcS != 0 && rcD != 0)
+            {
+                ScreenInfo.Text = "Не удалось прочитать параметры экрана";
+                return;
+            }
+
+            string? physSize = null, ovrSize = null, physDpi = null, ovrDpi = null;
+
+            foreach (var raw in sizeOut.Split('\n'))
+            {
+                var line = raw.Trim();
+                if (line.StartsWith("Physical size:", StringComparison.Ordinal))
+                    physSize = line["Physical size:".Length..].Trim();
+                else if (line.StartsWith("Override size:", StringComparison.Ordinal))
+                    ovrSize = line["Override size:".Length..].Trim();
+            }
+
+            foreach (var raw in densOut.Split('\n'))
+            {
+                var line = raw.Trim();
+                if (line.StartsWith("Physical density:", StringComparison.Ordinal))
+                    physDpi = line["Physical density:".Length..].Trim();
+                else if (line.StartsWith("Override density:", StringComparison.Ordinal))
+                    ovrDpi = line["Override density:".Length..].Trim();
+            }
+
+            var effSize = ovrSize ?? physSize;
+            var effDpi = ovrDpi ?? physDpi;
+
+            var text = $"Физически: {physSize ?? "?"} · DPI {physDpi ?? "?"}";
+            if (ovrSize != null || ovrDpi != null)
+                text += $"\nТекущее: {effSize ?? "?"} · DPI {effDpi ?? "?"}";
+
+            ScreenInfo.Text = text;
+
+            // Подставляем текущие значения в поля, если пользователь их не заполнил.
+            if (string.IsNullOrWhiteSpace(ResBox.Text) && effSize != null)
+                ResBox.Text = effSize;
+            if (string.IsNullOrWhiteSpace(DpiBox.Text) && effDpi != null)
+                DpiBox.Text = effDpi;
+        }
+        catch (Exception ex)
+        {
+            ScreenInfo.Text = $"Ошибка чтения: {ex.Message}";
+        }
+    }
+
+    /// <summary>Применяет разрешение (WxH) и/или DPI через wm size / wm density.</summary>
+    private async Task ApplyScreenAsync()
+    {
+        var serial = Ctx?.Serial;
+        if (string.IsNullOrEmpty(serial))
+        {
+            Ctx?.Log("Сначала подключите устройство");
+            return;
+        }
+
+        var res = ResBox.Text?.Trim() ?? "";
+        var dpi = DpiBox.Text?.Trim() ?? "";
+        var validRes = Regex.IsMatch(res, @"^\d{3,5}x\d{3,5}$");
+        var validDpi = Regex.IsMatch(dpi, @"^\d{2,4}$");
+
+        if (!validRes && !validDpi)
+        {
+            Ctx.Log("Укажите разрешение вида 1920x1080 и/или DPI числом (например 320)");
+            return;
+        }
+
+        if (Ctx.Settings.ConfirmDangerous)
+        {
+            var parts = new List<string>();
+            if (validRes) parts.Add($"разрешение {res}");
+            if (validDpi) parts.Add($"DPI {dpi}");
+            var ok = await UiDialogs.Confirm(TopLevel.GetTopLevel(this) as Window,
+                "Изменить экран",
+                $"Применить {string.Join(" и ", parts)}? Неверные значения могут сделать экран нечитаемым — сбросить можно кнопками «Сбросить».");
+            if (!ok) return;
+        }
+
+        var client = new AdbClient(Ctx.AdbPath, serial, 20);
+
+        if (validRes)
+        {
+            var (rc, _, err) = await Task.Run(() => client.Shell($"wm size {res}", 20));
+            Ctx.Log(rc == 0 ? $"Разрешение задано: {res}" : $"Ошибка разрешения: {err.Trim()}");
+        }
+
+        if (validDpi)
+        {
+            var (rc, _, err) = await Task.Run(() => client.Shell($"wm density {dpi}", 20));
+            Ctx.Log(rc == 0 ? $"DPI задан: {dpi}" : $"Ошибка DPI: {err.Trim()}");
+        }
+
+        await RefreshScreenInfoAsync();
+    }
+
+    /// <summary>Сбрасывает разрешение или DPI к заводским (wm ... reset).</summary>
+    private async Task ResetScreenAsync(bool density)
+    {
+        var serial = Ctx?.Serial;
+        if (string.IsNullOrEmpty(serial))
+        {
+            Ctx?.Log("Сначала подключите устройство");
+            return;
+        }
+
+        var client = new AdbClient(Ctx.AdbPath, serial, 20);
+        var cmd = density ? "wm density reset" : "wm size reset";
+        var (rc, _, err) = await Task.Run(() => client.Shell(cmd, 20));
+
+        Ctx.Log(rc == 0
+            ? (density ? "DPI сброшен к заводскому" : "Разрешение сброшено к заводскому")
+            : $"Ошибка сброса: {err.Trim()}");
+
+        await RefreshScreenInfoAsync();
     }
 
     private void ReloadPrograms()

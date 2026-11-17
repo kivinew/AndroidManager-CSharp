@@ -21,7 +21,6 @@ public partial class MainWindow : Window
 
     private readonly AppState _ctx;
     private bool _busy;
-    private LogWindow? _logWindow;
 
     public MainWindow()
     {
@@ -43,9 +42,9 @@ public partial class MainWindow : Window
         AppsTab.Ctx = _ctx;
         CardsTab.Ctx = _ctx;
         ProcsTab.Ctx = _ctx;
-        BarsTab.Ctx = _ctx;
         ActionsTab.Ctx = _ctx;
         SettingsTab.Ctx = _ctx;
+        LogsTab.Attach(_ctx);
 
         ConnectionTab.DevicesChanged += () => Dispatcher.UIThread.Post(() => _ = RefreshDevicesAsync());
         ConnectionTab.DeviceSelected += serial => OnDeviceSelected(serial);
@@ -57,9 +56,9 @@ public partial class MainWindow : Window
         BtnApps.Click += (_, _) => ShowPage("apps");
         BtnCards.Click += (_, _) => ShowPage("cards");
         BtnProcs.Click += (_, _) => ShowPage("procs");
-        BtnBars.Click += (_, _) => ShowPage("bars");
         BtnActions.Click += (_, _) => ShowPage("actions");
         BtnSettings.Click += (_, _) => ShowPage("settings");
+        BtnLogs.Click += (_, _) => ShowPage("logs");
 
         // Управление окном (без системной рамки)
         TitleBar.PointerPressed += (_, e) => BeginMoveDrag(e);
@@ -69,19 +68,7 @@ public partial class MainWindow : Window
 
         Closed += (_, _) => ConsoleTab.Shutdown();
 
-        // Окно логов: открывается по кнопке в заголовке.
-        BtnLogs.Click += (_, _) =>
-        {
-            if (_logWindow is null || !_logWindow.IsVisible)
-            {
-                _logWindow = new LogWindow(_ctx);
-                _logWindow.Show(this);
-            }
-            else
-            {
-                _logWindow.Activate();
-            }
-        };
+        // Логи теперь во вкладке, не в отдельном окне.
 
         ApplyThemeAndFont();
         _ctx.Log($"Настройки: {_ctx.SettingsPath}");
@@ -96,16 +83,24 @@ public partial class MainWindow : Window
         PanelApps.IsVisible = page == "apps";
         PanelCards.IsVisible = page == "cards";
         PanelProcs.IsVisible = page == "procs";
-        PanelBars.IsVisible = page == "bars";
         PanelActions.IsVisible = page == "actions";
+        PanelLogs.IsVisible = page == "logs";
         PanelSettings.IsVisible = page == "settings";
 
         SetActiveSidebar(page);
+
+        // Кастомные кнопки редактируются прямо на вкладке — при переходе перерисовываем их.
+        switch (page)
+        {
+            case "console": ConsoleTab.RefreshCustomBar(); break;
+            case "apps": AppsTab.RefreshCustomBar(); break;
+            case "actions": ActionsTab.RefreshCustomBar(); break;
+        }
     }
 
     private void SetActiveSidebar(string page)
     {
-        foreach (var btn in new[] { BtnHome, BtnConsole, BtnApps, BtnCards, BtnProcs, BtnBars, BtnActions, BtnSettings })
+        foreach (var btn in new[] { BtnHome, BtnConsole, BtnApps, BtnCards, BtnProcs, BtnActions, BtnLogs, BtnSettings })
         {
             var classes = btn.Classes;
             if (classes.Contains("is-active"))
@@ -119,8 +114,8 @@ public partial class MainWindow : Window
             "apps" => BtnApps,
             "cards" => BtnCards,
             "procs" => BtnProcs,
-            "bars" => BtnBars,
             "actions" => BtnActions,
+            "logs" => BtnLogs,
             "settings" => BtnSettings,
             _ => BtnHome
         };
@@ -155,11 +150,13 @@ public partial class MainWindow : Window
             return;
 
         _ctx.Serial = serial;
+        ConnectionTab.RefreshConnectionState();
 
         ConsoleTab.OnDeviceChanged();
         AppsTab.OnDeviceChanged();
         CardsTab.OnDeviceChanged();
         ProcsTab.OnDeviceChanged();
+        ActionsTab.OnDeviceChanged();
 
         if (string.IsNullOrEmpty(serial))
         {

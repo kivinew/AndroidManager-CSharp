@@ -45,7 +45,50 @@ public partial class ConsoleView : UserControl
         }
 
         _timer.Tick += (_, _) => Drain();
-        Loaded += (_, _) => ApplyFont();
+        Loaded += (_, _) => { ApplyFont(); RefreshCustomBar(); };
+    }
+
+    /// <summary>Перерисовывает кастомные кнопки панели «Консоль».</summary>
+    public void RefreshCustomBar()
+    {
+        if (Ctx is null)
+            return;
+
+        CustomBars.Render(Ctx, CustomBars.PanelConsole, CustomBar, TopLevel.GetTopLevel(this), RefreshCustomBar, RunBarCommand);
+    }
+
+    /// <summary>Кнопка консоли выполняется в самой консоли: вывод, стриминг и история — как у поля ввода.</summary>
+    private async void RunBarCommand(BarItem item)
+    {
+        var serial = Ctx.Serial ?? "";
+        var cmd = item.Cmd ?? "";
+
+        if ((item.Type ?? "shell") != "pc" && string.IsNullOrEmpty(serial))
+        {
+            Ctx.Log("Сначала подключите устройство");
+            return;
+        }
+
+        var clip = "";
+        try
+        {
+            if (TopLevel.GetTopLevel(this)?.Clipboard is { } clipboard)
+                clip = (await clipboard.GetTextAsync() ?? "").Trim();
+        }
+        catch
+        {
+        }
+
+        cmd = cmd.Replace("{clipboard}", clip).Replace("{serial}", serial);
+
+        if ((item.Type ?? "shell") == "pc")
+        {
+            CustomBars.Run(Ctx, new BarItem { Name = item.Name, Cmd = cmd, Type = "pc" }, TopLevel.GetTopLevel(this));
+            return;
+        }
+
+        CmdBox.Text = cmd;
+        Run();
     }
 
     /// <summary>Размер шрифта консоли. Вызывается при загрузке и после сохранения настроек.</summary>
