@@ -27,7 +27,7 @@
             <StackPanel Orientation="Horizontal" Spacing="16" VerticalAlignment="Center">
               <StackPanel HorizontalAlignment="Right">
                 <TextBlock Text="ВЕРСИЯ UI" FontSize="9" FontWeight="Bold" Foreground="{DynamicResource Muted}" HorizontalAlignment="Right" />
-                <TextBlock x:Name="UiVersion" Text="v1.11" FontSize="12" FontWeight="Bold" Foreground="{DynamicResource Text}" HorizontalAlignment="Right" />
+                <TextBlock x:Name="UiVersion" Text="v1.19" FontSize="12" FontWeight="Bold" Foreground="{DynamicResource Text}" HorizontalAlignment="Right" />
               </StackPanel>
               <StackPanel HorizontalAlignment="Right">
                 <TextBlock Text="ЯДРО" FontSize="9" FontWeight="Bold" Foreground="{DynamicResource Muted}" HorizontalAlignment="Right" />
@@ -66,25 +66,54 @@
           <Grid RowDefinitions="*,Auto">
             <StackPanel Grid.Row="0" Spacing="10" VerticalAlignment="Top" Margin="0,8,0,0">
               <Button x:Name="BtnHome" Classes="nav-btn is-active" ToolTip.Tip="Подключение">
-                <TextBlock Text="📱" FontSize="16" Foreground="#B89EFF" VerticalAlignment="Center" HorizontalAlignment="Center" />
+                <Image Source="Icons/connect.png" Width="16" Height="16" Stretch="Uniform" />
               </Button>
               <Button x:Name="BtnCards" Classes="nav-btn" ToolTip.Tip="Виджеты">
-                <TextBlock Text="▭" FontSize="16" Foreground="#7B84A0" VerticalAlignment="Center" HorizontalAlignment="Center" />
+                <Image Source="Icons/widgets.png" Width="16" Height="16" Stretch="Uniform" />
               </Button>
               <Button x:Name="BtnApps" Classes="nav-btn" ToolTip.Tip="Приложения">
-                <TextBlock Text="📦" FontSize="16" Foreground="#7B84A0" VerticalAlignment="Center" HorizontalAlignment="Center" />
+                <Image Source="Icons/apps.png" Width="16" Height="16" Stretch="Uniform" />
               </Button>
               <Button x:Name="BtnProcs" Classes="nav-btn" ToolTip.Tip="Процессы">
-                <TextBlock Text="⌘" FontSize="16" Foreground="#7B84A0" VerticalAlignment="Center" HorizontalAlignment="Center" />
+                <Image Source="Icons/process.png" Width="16" Height="16" Stretch="Uniform" />
               </Button>
               <Button x:Name="BtnConsole" Classes="nav-btn" ToolTip.Tip="Консоль">
-                <TextBlock Text="▢" FontSize="16" Foreground="#7B84A0" VerticalAlignment="Center" HorizontalAlignment="Center" />
+                <Button.Content>
+                  <Viewbox Width="20" Height="14" Stretch="Uniform">
+                    <Path Width="14" Height="10" Fill="#7B84A0">
+                      <Path.Data>
+                        <PathGeometry FillRule="EvenOdd">
+                          <PathFigure StartPoint="0,0" IsClosed="True">
+                            <LineSegment Point="14,0" />
+                            <LineSegment Point="14,10" />
+                            <LineSegment Point="0,10" />
+                          </PathFigure>
+                          <PathFigure StartPoint="1,1" IsClosed="True">
+                            <LineSegment Point="1,8" />
+                            <LineSegment Point="13,8" />
+                            <LineSegment Point="13,1" />
+                          </PathFigure>
+                          <PathFigure StartPoint="2,2" IsClosed="True">
+                            <LineSegment Point="4,2" />
+                            <LineSegment Point="4,4" />
+                            <LineSegment Point="2,4" />
+                          </PathFigure>
+                          <PathFigure StartPoint="5,7" IsClosed="True">
+                            <LineSegment Point="10,7" />
+                            <LineSegment Point="10,9" />
+                            <LineSegment Point="5,9" />
+                          </PathFigure>
+                        </PathGeometry>
+                      </Path.Data>
+                    </Path>
+                  </Viewbox>
+                </Button.Content>
               </Button>
               <Button x:Name="BtnLogs" Classes="nav-btn" ToolTip.Tip="Логи">
-                <TextBlock Text="▤" FontSize="16" Foreground="#7B84A0" VerticalAlignment="Center" HorizontalAlignment="Center" />
+                <Image Source="Icons/logs.png" Width="16" Height="16" Stretch="Uniform" />
               </Button>
               <Button x:Name="BtnActions" Classes="nav-btn" ToolTip.Tip="Действия">
-                <TextBlock Text="⚡" FontSize="16" Foreground="#7B84A0" VerticalAlignment="Center" HorizontalAlignment="Center" />
+                <Image Source="Icons/action.png" Width="16" Height="16" Stretch="Uniform" />
               </Button>
             </StackPanel>
 

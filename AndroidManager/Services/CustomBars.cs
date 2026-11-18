@@ -3,10 +3,12 @@ using AndroidManager.Core.Settings;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -23,13 +25,30 @@ public static class CustomBars
     public const string PanelTools = "tools";
     public const string PanelApps = "apps";
     public const string PanelConsole = "console";
+    public const string PanelConsoleQuick = "console_quick";
 
     public static readonly Dictionary<string, string> PanelTitles = new()
     {
         [PanelTools] = "Действия",
         [PanelApps] = "Приложения",
         [PanelConsole] = "Консоль",
+        [PanelConsoleQuick] = "Быстрые команды консоли",
     };
+
+    private sealed class DragState
+    {
+        public string Panel = "";
+        public int Index;
+        public Point Start;
+        public bool Moved;
+        public Button? Source;
+    }
+
+    // Последний отрисованный хост каждой панели: по нему ловим бросок и перерисовываем.
+    private static readonly Dictionary<string, (Panel Host, Action Repaint, AppState Ctx)> _bars = new();
+    private static readonly HashSet<Panel> _wired = new();
+    private static DragState? _drag;
+    private const double DragThreshold = 6;
 
     /// <summary>Список кнопок панели, создаётся при необходимости.</summary>
     public static List<BarItem> Items(AppState ctx, string panel)
@@ -42,12 +61,23 @@ public static class CustomBars
 
     /// <summary>
     /// Кнопки панели плюс «+ Кнопка» в конце. ПКМ по кнопке — изменить/удалить/переставить.
-    /// onChanged перерисовывает панель после правки.
+    /// onChanged перерисовывает панель после правки. showAdd=false — без «+ Кнопка»
+    /// (быстрые команды консоли: там своя панель создания).
     /// </summary>
-    public static void Render(AppState ctx, string panel, Panel host, TopLevel? top, Action? onChanged, Action<BarItem>? onRun = null)
+    public static void Render(AppState ctx, string panel, Panel host, TopLevel? top, Action? onChanged, Action<BarItem>? onRun = null, bool showAdd = true)
     {
         host.Children.Clear();
         var items = Items(ctx, panel);
+
+        _bars[panel] = (host, () =>
+        {
+            if (onChanged is not null)
+                onChanged();
+            else
+                Render(ctx, panel, host, top, null, onRun, showAdd);
+        }, ctx);
+
+        WireHost(host);
 
         for (var idx = 0; idx < items.Count; idx++)
         {
@@ -59,7 +89,7 @@ public static class CustomBars
                 Content = item.Name,
                 Margin = new Thickness(0, 0, 6, 6),
             };
-            ToolTip.SetTip(btn, $"{item.Type}: {item.Cmd}");
+            ToolTip.SetTip(btn, $"{item.Type}: {item.Cmd}\nПеретащите кнопку, чтобы переставить её");
             btn.Click += (_, _) =>
             {
                 if (onRun is not null)
@@ -97,6 +127,9 @@ public static class CustomBars
             host.Children.Add(btn);
         }
 
+        if (!showAdd)
+            return;
+
         var add = new Button
         {
             Content = "+ Кнопка",
@@ -106,6 +139,203 @@ public static class CustomBars
         ToolTip.SetTip(add, $"Создать свою кнопку на панели «{PanelTitles.GetValueOrDefault(panel, panel)}»");
         add.Click += (_, _) => Edit(ctx, panel, null, top as Window, onChanged);
         host.Children.Add(add);
+    }
+
+    /// <summary>
+    /// Перетаскивание живёт на самой панели, а не на кнопке: нажатие не трогаем вовсе,
+    /// иначе клик по кнопке перестаёт срабатывать. Указатель захватывается только
+    /// после сдвига дальше порога — тогда кнопка отпускание уже не получает.
+    /// </summary>
+    private static void WireHost(Panel host)
+    {
+        if (!_wired.Add(host))
+            return;
+
+        host.AddHandler(InputElement.PointerPressedEvent, HostPressed, RoutingStrategies.Tunnel);
+        host.AddHandler(InputElement.PointerMovedEvent, HostMoved, RoutingStrategies.Tunnel, handledEventsToo: true);
+        host.AddHandler(InputElement.PointerReleasedEvent, HostReleased, RoutingStrategies.Tunnel, handledEventsToo: true);
+    }
+
+    private static (AppState Ctx, string Panel)? FindEntry(Panel host)
+    {
+        foreach (var (key, bar) in _bars)
+        {
+            if (ReferenceEquals(bar.Host, host))
+                return (bar.Ctx, key);
+        }
+
+        return null;
+    }
+
+    private static void HostPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (sender is not Panel host || _drag is not null)
+            return;
+
+        if (!e.GetCurrentPoint(host).Properties.IsLeftButtonPressed)
+            return;
+
+        var entry = FindEntry(host);
+        if (entry is null)
+            return;
+
+        var btn = (e.Source as Visual)?.GetSelfAndVisualAncestors().OfType<Button>()
+            .FirstOrDefault(b => b.Parent == host);
+        if (btn is null)
+            return;
+
+        var index = host.Children.IndexOf(btn);
+        if (index < 0 || index >= Items(entry.Value.Ctx, entry.Value.Panel).Count)
+            return;
+
+        _drag = new DragState { Panel = entry.Value.Panel, Index = index, Start = e.GetPosition(host), Source = btn };
+    }
+
+    private static void HostMoved(object? sender, PointerEventArgs e)
+    {
+        if (_drag is null || _drag.Moved || sender is not Panel host)
+            return;
+
+        if (!e.GetCurrentPoint(host).Properties.IsLeftButtonPressed)
+            return;
+
+        if (DragDistance(e.GetPosition(host), _drag.Start) < DragThreshold)
+            return;
+
+        _drag.Moved = true;
+        if (_drag.Source is not null)
+            _drag.Source.Opacity = 0.55;
+
+        e.Pointer.Capture(host);
+    }
+
+    private static void HostReleased(object? sender, PointerReleasedEventArgs e)
+    {
+        if (_drag is null || sender is not Panel host)
+            return;
+
+        var drag = _drag;
+        _drag = null;
+
+        if (!drag.Moved)
+            return;
+
+        if (drag.Source is not null)
+            drag.Source.Opacity = 1;
+
+        e.Pointer.Capture(null);
+
+        var entry = FindEntry(host);
+        var top = TopLevel.GetTopLevel(host);
+        if (entry is null || top is null)
+            return;
+
+        var windowPoint = e.GetPosition(top);
+        var hit = top.InputHitTest(windowPoint);
+
+        if (FindDropTarget(hit, e, out var toPanel, out var toIndex))
+            MoveTo(entry.Value.Ctx, drag.Panel, drag.Index, toPanel, toIndex);
+        else if (TryDropOnHostArea(top, windowPoint, out var areaPanel))
+            MoveTo(entry.Value.Ctx, drag.Panel, drag.Index, areaPanel, -1);
+    }
+
+    private static double DragDistance(Point a, Point b) => Math.Abs(a.X - b.X) + Math.Abs(a.Y - b.Y);
+
+    /// <summary>Ищет панель под указателем и позицию вставки (-1 — в конец).</summary>
+    private static bool FindDropTarget(IInputElement? hit, PointerReleasedEventArgs e, out string panel, out int index)
+    {
+        panel = "";
+        index = -1;
+
+        if (hit is not Visual v)
+            return false;
+
+        foreach (var anc in v.GetSelfAndVisualAncestors())
+        {
+            if (anc is not Panel p)
+                continue;
+
+            foreach (var (key, bar) in _bars)
+            {
+                if (!ReferenceEquals(bar.Host, p))
+                    continue;
+
+                panel = key;
+
+                var target = v.GetSelfAndVisualAncestors().OfType<Button>().FirstOrDefault(b => b.Parent == p);
+                if (target is null)
+                    return true;
+
+                // Правее середины кнопки — встать после неё.
+                var bounds = target.Bounds;
+                var pt = e.GetPosition(p);
+                index = p.Children.IndexOf(target) + (pt.X > bounds.X + bounds.Width / 2 ? 1 : 0);
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>Точка внутри области панели (пустое место ряда) — бросок в конец.</summary>
+    private static bool TryDropOnHostArea(TopLevel top, Point windowPoint, out string panel)
+    {
+        panel = "";
+
+        foreach (var (key, bar) in _bars)
+        {
+            if (top.TranslatePoint(windowPoint, bar.Host) is not { } p)
+                continue;
+
+            if (p.X < 0 || p.Y < 0 || p.X > bar.Host.Bounds.Width || p.Y > bar.Host.Bounds.Height)
+                continue;
+
+            panel = key;
+            return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>Переносит кнопку между панелями (или внутри одной) и сохраняет настройки.</summary>
+    private static void MoveTo(AppState ctx, string fromPanel, int fromIndex, string toPanel, int toIndex)
+    {
+        var from = Items(ctx, fromPanel);
+        if (fromIndex < 0 || fromIndex >= from.Count)
+            return;
+
+        var to = Items(ctx, toPanel);
+        var item = from[fromIndex];
+
+        if (toIndex < 0)
+            toIndex = to.Count;
+
+        if (fromPanel == toPanel)
+        {
+            if (toIndex > fromIndex)
+                toIndex--;
+            toIndex = Math.Clamp(toIndex, 0, to.Count - 1);
+            if (toIndex == fromIndex)
+                return;
+        }
+        else
+        {
+            toIndex = Math.Clamp(toIndex, 0, to.Count);
+        }
+
+        from.RemoveAt(fromIndex);
+        to.Insert(toIndex, item);
+        ctx.SaveSettings();
+
+        RepaintBar(fromPanel);
+        if (toPanel != fromPanel)
+            RepaintBar(toPanel);
+    }
+
+    private static void RepaintBar(string panel)
+    {
+        if (_bars.TryGetValue(panel, out var bar))
+            bar.Repaint();
     }
 
     /// <summary>Окно создания и правки кнопки.</summary>

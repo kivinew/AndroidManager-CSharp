@@ -24,6 +24,7 @@ public partial class ConsoleView : UserControl
     private ScrollViewer? _scroll;
     private AdbStream? _stream;
     private int _historyPos;
+    private bool _scrollPending;
 
     public AppState Ctx { get; set; } = null!;
 
@@ -34,18 +35,23 @@ public partial class ConsoleView : UserControl
         RunBtn.Click += (_, _) => Run();
         StopBtn.Click += (_, _) => StopStream();
         ClearBtn.Click += (_, _) => Clear();
+        TopBtn.Click += (_, _) => ScrollToTop();
+        BottomBtn.Click += (_, _) => { AutoScroll.IsChecked = true; ScrollToBottom(); };
         CmdBox.KeyDown += OnKeyDown;
 
-        // Быстрые команды: кнопка просто подставляет команду в поле и выполняет её.
-        foreach (var command in Defaults.ConsoleBar)
-        {
-            var button = new Button { Content = command, Margin = new Thickness(0, 0, 6, 0) };
-            button.Click += (_, _) => RunCommand(command);
-            QuickBar.Children.Add(button);
-        }
-
         _timer.Tick += (_, _) => Drain();
-        Loaded += (_, _) => { ApplyFont(); RefreshCustomBar(); };
+        Loaded += (_, _) => { ApplyFont(); RefreshQuickBar(); RefreshCustomBar(); };
+    }
+
+    /// <summary>Быстрые команды: ПКМ правит и удаляет, клик выполняет в самой консоли.</summary>
+    public void RefreshQuickBar()
+    {
+        if (Ctx is null)
+            return;
+
+        CustomBars.Render(Ctx, CustomBars.PanelConsoleQuick, QuickBar,
+            TopLevel.GetTopLevel(this), RefreshQuickBar,
+            item => RunCommand(item.Cmd ?? ""), showAdd: false);
     }
 
     /// <summary>Перерисовывает кастомные кнопки панели «Консоль».</summary>
@@ -252,6 +258,41 @@ public partial class ConsoleView : UserControl
         Output.ItemsSource = null;
         Output.ItemsSource = _lines;
 
+        if (AutoScroll.IsChecked == false)
+            return;
+
+        // Экстент обновляется на проходе компоновки: прокрутка сразу после смены
+        // ItemsSource считает смещение по прошлому содержимому и не доезжает до низа.
+        QueueScrollToBottom();
+    }
+
+    private void QueueScrollToBottom()
+    {
+        if (_scrollPending)
+            return;
+
+        _scrollPending = true;
+        Dispatcher.UIThread.Post(() =>
+        {
+            _scrollPending = false;
+
+            if (AutoScroll.IsChecked != false)
+                ScrollToBottom();
+        }, DispatcherPriority.Background);
+    }
+
+    /// <summary>К первой строке. Автопрокрутка гасится: иначе поток вернёт вниз.</summary>
+    private void ScrollToTop()
+    {
+        AutoScroll.IsChecked = false;
+
+        _scroll ??= Output.FindDescendantOfType<ScrollViewer>();
+        if (_scroll is not null)
+            _scroll.Offset = new Vector(0, 0);
+    }
+
+    private void ScrollToBottom()
+    {
         _scroll ??= Output.FindDescendantOfType<ScrollViewer>();
         if (_scroll is null)
             return;
