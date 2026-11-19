@@ -25,10 +25,10 @@
           <StackPanel Spacing="8">
             <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
               <TextBlock Text="📶" FontSize="18" Foreground="#F5923E" VerticalAlignment="Center" />
-              <TextBlock Text="WI-FI / IP:ПОРТ" FontSize="15" FontWeight="Bold"
+              <TextBlock Text="ADB ПО СЕТИ / IP:ПОРТ" FontSize="15" FontWeight="Bold"
                          Foreground="{DynamicResource Text}" VerticalAlignment="Center" />
             </StackPanel>
-            <TextBlock Text="БЕСПРОВОДНОЕ ПОДКЛЮЧЕНИЕ" FontSize="10" FontWeight="Bold"
+            <TextBlock Text="ADB ЧЕРЕЗ WI-FI" FontSize="10" FontWeight="Bold"
                        Foreground="{DynamicResource Muted}" LetterSpacing="0.5" />
             <Border Classes="badge" HorizontalAlignment="Left">
               <StackPanel Orientation="Horizontal" Spacing="6">
@@ -54,8 +54,12 @@
 
           <!-- Кнопки сети: подключение и сопряжение — здесь же, рядом с адресом -->
           <Grid ColumnDefinitions="*,10,Auto">
-            <Button Grid.Column="0" x:Name="ConnectBtn" Content="Подключить"
-                    Classes="btn--primary" HorizontalAlignment="Stretch" />
+            <Button Grid.Column="0" x:Name="ConnectBtn" Classes="btn--primary"
+                    HorizontalAlignment="Stretch" Padding="20 12">
+              <!-- Крупнее и плотнее обычной надписи: этот текст несёт цвет состояния -->
+              <TextBlock x:Name="ConnectText" Text="Подключить" FontSize="16" FontWeight="Bold"
+                         LetterSpacing="0.6" />
+            </Button>
             <Button Grid.Column="2" x:Name="PairBtn" Content="СОПРЯЖЕНИЕ..."
                     Classes="btn--ghost" />
           </Grid>
