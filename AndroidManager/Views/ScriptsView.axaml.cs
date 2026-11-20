@@ -177,8 +177,9 @@ public partial class ScriptsView : UserControl
             CreateNoWindow = true
         };
 
-        if (!string.IsNullOrEmpty(Ctx?.SelectedSerial))
-            psi.Environment["ANDROID_SERIAL"] = Ctx.SelectedSerial;
+        var serial = Ctx?.Serial;
+        if (!string.IsNullOrEmpty(serial))
+            psi.Environment["ANDROID_SERIAL"] = serial;
 
         try
         {
