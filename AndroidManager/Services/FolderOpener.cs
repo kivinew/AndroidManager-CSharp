@@ -8,6 +8,13 @@ namespace AndroidManager.Services;
 /// </summary>
 internal static class FolderOpener
 {
+    // Тот же вызов, что делает Python-версия (os.startfile): ShellExecuteW(NULL, "open", путь, ..., SW_SHOWNORMAL).
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode, EntryPoint = "ShellExecuteW")]
+    private static extern IntPtr ShellExecuteW(IntPtr hwnd, string? operation, string file,
+        string? parameters, string? directory, int showCmd);
+
+    private const int SW_SHOWNORMAL = 1;
+
     /// <returns>true, если запуск не вызвал исключения (окно открывает сама оболочка).</returns>
     public static bool Open(string path, Action<string>? log = null)
     {
@@ -27,15 +34,17 @@ internal static class FolderOpener
 
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
-            // 1) ShellExecute по пути папки (verb "open"): оболочка сама запускает проводник
-            //    на правильном рабочем столе, CreateProcess для explorer.exe не используется,
-            //    поэтому ошибка 0xc0000142 невозможна.
-            if (TryStart(log, "ShellExecute (путь папки)",
+            // 1) Прямой ShellExecuteW — в точности как os.startfile в Python-версии.
+            if (TryShellExecuteW(log, dir))
+                return true;
+
+            // 2) ShellExecute через Process.Start по пути папки.
+            if (TryStart(log, "Process.Start ShellExecute (путь папки)",
                     new ProcessStartInfo { FileName = dir, UseShellExecute = true }))
                 return true;
 
-            // 2) Запасной вариант: explorer.exe тоже через ShellExecute, путь в кавычках.
-            return TryStart(log, "ShellExecute (explorer.exe)",
+            // 3) Запасной вариант: explorer.exe тоже через ShellExecute, путь в кавычках.
+            return TryStart(log, "Process.Start ShellExecute (explorer.exe)",
                 new ProcessStartInfo { FileName = "explorer.exe", Arguments = $"\"{dir}\"", UseShellExecute = true });
         }
 
@@ -46,6 +55,22 @@ internal static class FolderOpener
                 Arguments = $"\"{dir}\"",
                 UseShellExecute = false,
             });
+    }
+
+    private static bool TryShellExecuteW(Action<string>? log, string dir)
+    {
+        try
+        {
+            // Результат > 32 — успех; иначе это код ошибки ShellExecute (2 — не найден, 5 — отказано в доступе и т.д.).
+            var code = ShellExecuteW(IntPtr.Zero, "open", dir, null, null, SW_SHOWNORMAL).ToInt64();
+            log?.Invoke(code > 32 ? "ShellExecuteW: OK" : $"ShellExecuteW: ошибка, код {code}");
+            return code > 32;
+        }
+        catch (Exception ex)
+        {
+            log?.Invoke($"ShellExecuteW: исключение {ex.GetType().Name}: {ex.Message}");
+            return false;
+        }
     }
 
     private static bool TryStart(Action<string>? log, string method, ProcessStartInfo psi)
