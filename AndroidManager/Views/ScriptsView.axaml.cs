@@ -250,9 +250,10 @@ public partial class ScriptsView : UserControl
     {
         try
         {
-            var dir = ScriptsDir;
+            var dir = Path.GetFullPath(ScriptsDir);
+            Directory.CreateDirectory(dir);
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-                Process.Start(new ProcessStartInfo("explorer.exe", $"\"{dir}\"") { UseShellExecute = true });
+                Process.Start(new ProcessStartInfo { FileName = dir, UseShellExecute = true });
             else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
                 Process.Start("open", dir);
             else
